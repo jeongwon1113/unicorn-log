@@ -447,6 +447,8 @@ tr:hover td{background:#F9FBFF}
               <span><span class="dot dot-l"></span>지각 △</span>
               <span><span class="dot dot-x"></span>결석 X</span>
               <span style="color:#2980B9">E 공결</span>
+              <span style="color:var(--success)">✓ 일지 제출</span>
+              <span style="color:var(--warning)">! 일지 미제출</span>
             </div>
           </div>
           <div class="att-body"><div id="att-all-ct"></div></div>
@@ -616,10 +618,6 @@ tr:hover td{background:#F9FBFF}
     <input class="mini-input" type="date" id="msc-date">
     <label class="mini-label">세부 내용</label>
     <input class="mini-input" type="text" id="msc-detail" placeholder="예: 스토리보드 작성, 촬영 기법 실습">
-    <div id="msc-sess-row" style="display:block">
-      <label class="mini-label">출석 회차 이름 (활동 일정일 때)</label>
-      <input class="mini-input" type="text" id="msc-sess-lbl" placeholder="예: 4회차">
-    </div>
     <div class="modal-footer">
       <button class="modal-btn cancel" onclick="closeModal('modal-schedule')">취소</button>
       <button class="modal-btn primary" onclick="confirmAddSchedule()">추가</button>
@@ -706,13 +704,34 @@ tr:hover td{background:#F9FBFF}
   </div>
 </div>
 
-<!-- 활동일지 보기 모달 -->
+<!-- 활동일지 보기/수정 모달 -->
 <div class="modal-bg" id="modal-view-log">
-  <div class="modal" style="max-width:520px">
+  <div class="modal" style="max-width:560px">
     <h3 id="vl-title"></h3>
-    <div id="vl-body" style="font-size:13px;line-height:1.9;color:var(--text);white-space:pre-wrap;max-height:60vh;overflow-y:auto;background:var(--bg);padding:12px;border-radius:8px;margin-top:4px"></div>
+    <input type="hidden" id="vl-log-id">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label class="mini-label">이름</label><input class="mini-input" id="vl-name"></div>
+      <div><label class="mini-label">날짜</label><input class="mini-input" type="date" id="vl-date"></div>
+    </div>
+    <label class="mini-label">활동 주제</label>
+    <input class="mini-input" id="vl-roles" placeholder="회의, 촬영 등">
+    <label class="mini-label">프로젝트</label>
+    <input class="mini-input" id="vl-project">
+    <label class="mini-label">오늘 한 일</label>
+    <textarea class="mini-input" id="vl-review" style="min-height:80px;resize:vertical"></textarea>
+    <label class="mini-label">잘된 점</label>
+    <textarea class="mini-input" id="vl-good" style="min-height:56px;resize:vertical"></textarea>
+    <label class="mini-label">아쉬운 점</label>
+    <textarea class="mini-input" id="vl-bad" style="min-height:56px;resize:vertical"></textarea>
+    <label class="mini-label">다음 도전</label>
+    <textarea class="mini-input" id="vl-next" style="min-height:48px;resize:vertical"></textarea>
+    <label class="mini-label">건의사항</label>
+    <textarea class="mini-input" id="vl-note" style="min-height:48px;resize:vertical"></textarea>
+    <label class="mini-label">지도자 코멘트</label>
+    <textarea class="mini-input" id="vl-cmt" style="min-height:56px;resize:vertical;border-color:#F5D98A;background:#FFFBF0"></textarea>
     <div class="modal-footer">
-      <button class="modal-btn primary" onclick="closeModal('modal-view-log')">닫기</button>
+      <button class="modal-btn cancel" onclick="closeModal('modal-view-log')">닫기</button>
+      <button class="modal-btn primary" onclick="saveLogEdit()">저장</button>
     </div>
   </div>
 </div>
@@ -1040,7 +1059,7 @@ function renderLogs(logs){
       +'<td>'+lnk+'</td>'
       +'<td><button class="act-btn primary" data-action="comment" data-id="'+l.id+'">'+(cmt?'✏️ '+cShort:'+ 코멘트')+'</button></td>'
       +'<td style="white-space:nowrap">'
-        +'<button class="act-btn" data-action="view" data-id="'+l.id+'">보기</button> '
+        +'<button class="act-btn" data-action="view" data-id="'+l.id+'">✏️ 보기/수정</button> '
         +'<button class="act-btn danger" data-action="delete-log" data-id="'+l.id+'">삭제</button>'
       +'</td>'
       +'</tr>';
@@ -1049,20 +1068,38 @@ function renderLogs(logs){
 function openLinks(id){var l=S.logs.find(function(x){return x.id===id;});if(!l||!l.links||!l.links.length)return;l.links.forEach(function(u){window.open(u,'_blank');});}
 function viewLog(id){
   var l=S.logs.find(function(x){return x.id===id;});if(!l)return;
-  var lnkStr=(l.links&&l.links.length)?'\n결과물 링크:\n'+l.links.join('\n'):'';
-  var cmtStr=S.cmt[l.id]?'\n\n[지도자 코멘트]\n'+S.cmt[l.id]:'';
-  document.getElementById('vl-title').textContent=l.name+' · '+l.date;
-  document.getElementById('vl-body').textContent=
-    '활동: '+l.roles+'\n프로젝트: '+(l.project||'없음')+' ('+(l.stage||'')+')'
-    +'\n\n오늘 한 일:\n'+l.review
-    +'\n\n잘된 점: '+(l.good||'없음')
-    +'\n아쉬운 점: '+(l.bad||'없음')
-    +'\n다음 도전: '+(l.next||'없음')
-    +lnkStr
-    +'\n\n건의사항:\n'+(l.note||'없음')
-    +cmtStr
-    +'\n\n제출: '+l.submitted;
+  document.getElementById('vl-log-id').value=id;
+  document.getElementById('vl-title').textContent=l.name+' · '+l.date+' 활동일지 (수정 가능)';
+  document.getElementById('vl-name').value=l.name||'';
+  document.getElementById('vl-date').value=l.date||'';
+  document.getElementById('vl-roles').value=l.roles||'';
+  document.getElementById('vl-project').value=l.project||'';
+  document.getElementById('vl-review').value=l.review||'';
+  document.getElementById('vl-good').value=l.good||'';
+  document.getElementById('vl-bad').value=l.bad||'';
+  document.getElementById('vl-next').value=l.next||'';
+  document.getElementById('vl-note').value=l.note||'';
+  document.getElementById('vl-cmt').value=S.cmt[l.id]||'';
   openModal('modal-view-log');
+}
+function saveLogEdit(){
+  var id=parseInt(document.getElementById('vl-log-id').value);
+  var l=S.logs.find(function(x){return x.id===id;});if(!l)return;
+  l.name=document.getElementById('vl-name').value.trim()||l.name;
+  l.date=document.getElementById('vl-date').value||l.date;
+  l.roles=document.getElementById('vl-roles').value.trim();
+  l.project=document.getElementById('vl-project').value.trim();
+  l.review=document.getElementById('vl-review').value.trim();
+  l.good=document.getElementById('vl-good').value.trim();
+  l.bad=document.getElementById('vl-bad').value.trim();
+  l.next=document.getElementById('vl-next').value.trim();
+  l.note=document.getElementById('vl-note').value.trim();
+  var cmt=document.getElementById('vl-cmt').value.trim();
+  if(cmt)S.cmt[id]=cmt;else delete S.cmt[id];
+  saveS();closeModal('modal-view-log');
+  applyFilter();renderCommentTable();renderStats();
+  renderAllAtt();renderMonthAtt();
+  toast('활동일지가 수정되었습니다.');
 }
 // ══ CONFIRM MODAL ══
 var _confirmCallback=null;
@@ -1176,9 +1213,15 @@ function confirmAddSession(){
   toast('활동 날짜가 추가되었습니다.');
 }
 function deleteSession(id){
+  var sid=String(id);
+  var sess=S.sess.find(function(s){return String(s.id)===sid;});
+  if(!sess){toast('해당 회차를 찾을 수 없습니다.');return;}
+  var fromSch=S.sch.some(function(s){return s.type==='activity'&&s.date===sess.date;});
+  if(fromSch){
+    toast('⚠️ 이 날짜는 일정 탭의 활동 일정과 연동되어 있어요. 일정 탭에서 먼저 삭제해주세요.');
+    return;
+  }
   showConfirm('활동 날짜 삭제','이 회차를 삭제할까요? 해당 회차의 출석 기록도 함께 삭제됩니다.',function(){
-    var sid=String(id);
-    // id가 정수든 소수든 _id 끝나는 키 모두 삭제
     Object.keys(S.att).forEach(function(k){
       var parts=k.split('_');
       var kId=parts[parts.length-1];
@@ -1207,7 +1250,20 @@ function renderAttTable(ctId,sessions){
       +'</th>';
   }).join('')+'<th>출석</th><th>지각</th><th>결석</th><th>출석률</th>';
   var rows=members.map(function(m){
-    var cells=sessions.map(function(s){var k=m+'_'+s.id;var v=S.att[k]||'';var cl=v==='O'?'ao':v==='△'?'al':v==='X'?'ax':v==='E'?'ae':'an';return'<td><button class="att-cell '+cl+'" data-action="cycle-att" data-member="'+encodeURIComponent(m)+'" data-sid="'+s.id+'">'+(v||'·')+'</button></td>';}).join('');
+    var cells=sessions.map(function(s){
+      var k=m+'_'+s.id;
+      var v=S.att[k]||'';
+      var cl=v==='O'?'ao':v==='△'?'al':v==='X'?'ax':v==='E'?'ae':'an';
+      // 출석(O/△/E)인 경우 활동일지 제출 여부 확인
+      var logMark='';
+      if(v==='O'||v==='△'||v==='E'){
+        var submitted=S.logs.some(function(l){return l.name===m&&l.date===s.date;});
+        logMark=submitted
+          ?'<span style="font-size:9px;color:var(--success);display:block;line-height:1">✓</span>'
+          :'<span style="font-size:9px;color:var(--warning);display:block;line-height:1">!</span>';
+      }
+      return'<td><button class="att-cell '+cl+'" data-action="cycle-att" data-member="'+encodeURIComponent(m)+'" data-sid="'+s.id+'" style="height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0">'+(v||'·')+logMark+'</button></td>';
+    }).join('');
     var o=sessions.filter(function(s){return S.att[m+'_'+s.id]==='O';}).length;
     var l=sessions.filter(function(s){return S.att[m+'_'+s.id]==='△';}).length;
     var x=sessions.filter(function(s){return S.att[m+'_'+s.id]==='X';}).length;
@@ -1396,16 +1452,13 @@ function confirmEditSchedule(){
   saveS();closeModal('modal-schedule-edit');renderSchedule();toast('일정이 수정되었습니다.');
 }
 function openAddSchedule(){
-  document.getElementById('msc-title').value='';document.getElementById('msc-date').value=new Date().toISOString().split('T')[0];
-  document.getElementById('msc-detail').value='';document.getElementById('msc-type').value='activity';
-  document.getElementById('msc-sess-lbl').value=(S.sess.length+1)+'회차';
-  document.getElementById('msc-sess-row').style.display='block';
+  document.getElementById('msc-title').value='';
+  document.getElementById('msc-date').value=new Date().toISOString().split('T')[0];
+  document.getElementById('msc-detail').value='';
+  document.getElementById('msc-type').value='activity';
   openModal('modal-schedule');
 }
-function onSchTypeChange(){
-  var t=document.getElementById('msc-type').value;
-  document.getElementById('msc-sess-row').style.display=(t==='activity')?'block':'none';
-}
+function onSchTypeChange(){}
 function confirmAddSchedule(){
   var title=document.getElementById('msc-title').value.trim();
   if(!title){toast('제목을 입력해주세요.');return;}
