@@ -232,6 +232,9 @@ tr:hover td{background:#F9FBFF}
   .filter-row{flex-wrap:wrap}
 }
 </style>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -364,7 +367,7 @@ tr:hover td{background:#F9FBFF}
       <input type="password" id="pw-in" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter')doLogin()">
       <button class="pw-toggle" onclick="togglePw()">👁</button>
     </div>
-    <button class="login-btn" onclick="doLogin()">로그인</button>
+    <button class="login-btn" onclick="this.textContent='불러오는 중...';doLogin()">로그인</button>
     <div class="login-err" id="login-err">비밀번호가 올바르지 않습니다.</div>
     <p class="def-pw">초기 비밀번호: <code>leader2025</code></p>
   </div>
@@ -801,6 +804,60 @@ function saveS(){
   lss('uc_cmt',JSON.stringify(S.cmt));lss('uc_members',JSON.stringify(S.members));
 }
 
+// ══ FIREBASE ══
+var firebaseConfig = {
+  apiKey: "AIzaSyCm9j2bsT8gyqncf8Nz9FQPizsqGQ7bNxE",
+  authDomain: "unicorn-96db3.firebaseapp.com",
+  projectId: "unicorn-96db3",
+  storageBucket: "unicorn-96db3.firebasestorage.app",
+  messagingSenderId: "918222721364",
+  appId: "1:918222721364:web:4aaa6e83b21fb2e58938c1"
+};
+firebase.initializeApp(firebaseConfig);
+var db = firebase.firestore();
+var DB_DOC = db.collection('unicornlog').doc('data');
+
+// 클라우드에 저장
+function saveS(){
+  // 로컬에도 백업
+  lss('uc_pw',S.pw);lss('uc_logs',JSON.stringify(S.logs));
+  lss('uc_att',JSON.stringify(S.att));lss('uc_proj',JSON.stringify(S.proj));
+  lss('uc_sch',JSON.stringify(S.sch));lss('uc_sess',JSON.stringify(S.sess));
+  lss('uc_cmt',JSON.stringify(S.cmt));lss('uc_members',JSON.stringify(S.members));
+  // Firestore에 저장
+  DB_DOC.set({
+    pw: S.pw,
+    logs: JSON.stringify(S.logs),
+    att: JSON.stringify(S.att),
+    proj: JSON.stringify(S.proj),
+    sch: JSON.stringify(S.sch),
+    sess: JSON.stringify(S.sess),
+    cmt: JSON.stringify(S.cmt),
+    members: JSON.stringify(S.members)
+  }).catch(function(e){ console.warn('Firestore 저장 실패:', e); });
+}
+
+// 클라우드에서 불러오기
+function loadFromCloud(callback){
+  DB_DOC.get().then(function(doc){
+    if(doc.exists){
+      var d=doc.data();
+      S.pw      = d.pw      || S.pw;
+      S.logs    = JSON.parse(d.logs    || '[]');
+      S.att     = JSON.parse(d.att     || '{}');
+      S.proj    = JSON.parse(d.proj    || JSON.stringify(defProj()));
+      S.sch     = JSON.parse(d.sch     || JSON.stringify(defSch()));
+      S.sess    = JSON.parse(d.sess    || JSON.stringify(defSess()));
+      S.cmt     = JSON.parse(d.cmt     || '{}');
+      S.members = JSON.parse(d.members || '[]');
+    }
+    if(callback) callback();
+  }).catch(function(e){
+    console.warn('Firestore 불러오기 실패, 로컬 데이터 사용:', e);
+    if(callback) callback();
+  });
+}
+
 // ══ FILTER STATE ══
 var fNames=new Set(), fDates=new Set(), fSearch='';
 
@@ -903,8 +960,20 @@ function saveGasUrl(){
 }
 
 // ══ LOGIN ══
-function doLogin(){var v=document.getElementById('pw-in').value;if(v===S.pw){document.getElementById('pw-in').value='';document.getElementById('login-err').style.display='none';goTo('dashboard');}else{document.getElementById('login-err').style.display='block';document.getElementById('pw-in').value='';}}
-function togglePw(){var i=document.getElementById('pw-in');i.type=(i.type==='password')?'text':'password';}
+function doLogin(){
+  var v=document.getElementById('pw-in').value;
+  // 먼저 클라우드에서 최신 데이터 불러온 후 비밀번호 확인
+  loadFromCloud(function(){
+    if(v===S.pw){
+      document.getElementById('pw-in').value='';
+      document.getElementById('login-err').style.display='none';
+      goTo('dashboard');
+    } else {
+      document.getElementById('login-err').style.display='block';
+      document.getElementById('pw-in').value='';
+    }
+  });
+}function togglePw(){var i=document.getElementById('pw-in');i.type=(i.type==='password')?'text':'password';}
 function doLogout(){goTo('home');}
 
 // ══ DASHBOARD ══
