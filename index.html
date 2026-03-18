@@ -525,6 +525,11 @@ tr:hover td{background:#F9FBFF}
         <div class="save-msg" id="pw-msg">✓ 비밀번호가 변경되었습니다.</div>
       </div>
       <div class="set-card">
+        <h3>📅 출석 날짜 초기화</h3>
+        <p>등록된 모든 활동 날짜(회차)와 출석 데이터를 초기화합니다.</p>
+        <button class="save-btn" style="background:var(--warning)" onclick="clearSessions()">출석 날짜 전체 초기화</button>
+      </div>
+      <div class="set-card">
         <h3>🗑️ 데이터 관리</h3>
         <p>전체 활동일지를 삭제합니다. 복구되지 않습니다.</p>
         <button class="save-btn" style="background:var(--danger)" onclick="clearAll()">활동일지 전체 삭제</button>
@@ -539,8 +544,7 @@ tr:hover td{background:#F9FBFF}
     <h3>활동 날짜 추가</h3>
     <label class="mini-label">활동 날짜</label>
     <input class="mini-input" type="date" id="ms-date">
-    <label class="mini-label">회차 이름</label>
-    <input class="mini-input" type="text" id="ms-label" placeholder="예: 4회차">
+    <p style="font-size:12px;color:var(--muted);margin-top:4px">회차 이름은 날짜 순서대로 자동으로 붙여집니다.</p>
     <div class="modal-footer">
       <button class="modal-btn cancel" onclick="closeModal('modal-session')">취소</button>
       <button class="modal-btn primary" onclick="confirmAddSession()">추가</button>
@@ -647,6 +651,29 @@ tr:hover td{background:#F9FBFF}
   </div>
 </div>
 
+<!-- 일정 수정 모달 -->
+<div class="modal-bg" id="modal-schedule-edit">
+  <div class="modal">
+    <h3>일정 수정</h3>
+    <label class="mini-label">일정 종류</label>
+    <select class="mini-select" id="mse-type" onchange="onSchEditTypeChange()">
+      <option value="activity">활동 일정</option>
+      <option value="memo">메모 / 기타 일정</option>
+    </select>
+    <label class="mini-label">제목 *</label>
+    <input class="mini-input" type="text" id="mse-title">
+    <label class="mini-label">날짜</label>
+    <input class="mini-input" type="date" id="mse-date">
+    <label class="mini-label">세부 내용</label>
+    <input class="mini-input" type="text" id="mse-detail">
+    <input type="hidden" id="mse-id">
+    <div class="modal-footer">
+      <button class="modal-btn cancel" onclick="closeModal('modal-schedule-edit')">취소</button>
+      <button class="modal-btn primary" onclick="confirmEditSchedule()">저장</button>
+    </div>
+  </div>
+</div>
+
 <!-- 활동일지 보기 모달 -->
 <div class="modal-bg" id="modal-view-log">
   <div class="modal" style="max-width:520px">
@@ -690,7 +717,7 @@ tr:hover td{background:#F9FBFF}
 // ══ DEFAULTS ══
 function defProj(){return[{id:1,name:'단 소개 영상',members:['김민준','이서연'],start:'2026-03-01',due:'2026-04-15',stage:2,platform:'YouTube',done:'진행중'},{id:2,name:'봄 캠페인 릴스',members:['박지호','최수아'],start:'2026-04-01',due:'2026-05-10',stage:0,platform:'Instagram',done:'예정'}];}
 function defSch(){return[{id:1,month:'3',title:'오리엔테이션 & 팀 빌딩',detail:'단원 소개, 역할 배분',date:'2026-03-08',done:'완료',type:'activity'},{id:2,month:'4',title:'영상 기획 워크숍',detail:'스토리보드 작성, 촬영 기법',date:'2026-04-12',done:'예정',type:'activity'},{id:3,month:'5',title:'첫 번째 영상 제작',detail:'촬영 및 편집',date:'2026-05-10',done:'예정',type:'activity'},{id:4,month:'6',title:'중간 발표회',detail:'제작 영상 상영 및 피드백',date:'2026-06-14',done:'예정',type:'activity'},{id:5,month:'9',title:'2학기 킥오프',detail:'하반기 계획 수립',date:'2026-09-06',done:'예정',type:'activity'},{id:6,month:'12',title:'연말 발표회',detail:'연간 제작 영상 상영 및 시상',date:'2026-12-13',done:'예정',type:'activity'}];}
-function defSess(){return[{id:101,date:'2026-03-08',label:'1회차'},{id:102,date:'2026-03-22',label:'2회차'},{id:103,date:'2026-04-12',label:'3회차'}];}
+function defSess(){return[];}
 const STAGES=['기획','촬영 준비','촬영','편집','검토','완성'];
 
 // ══ STATE ══
@@ -925,6 +952,13 @@ function deleteMember(id){
     saveS();renderMembers();toast('삭제되었습니다.');
   });
 }
+function clearSessions(){
+  showConfirm('출석 날짜 초기화','모든 활동 날짜와 출석 데이터를 삭제합니다. 복구되지 않습니다.',function(){
+    S.sess=[];S.att={};saveS();
+    renderAllAtt();renderMonthAtt();buildMonthSel();
+    toast('출석 날짜가 초기화되었습니다.');
+  });
+}
 function clearAll(){
   showConfirm('전체 삭제','모든 활동일지를 삭제합니다. 복구되지 않습니다.',function(){
     S.logs=[];S.cmt={};saveS();renderDashboard();toast('전체 삭제 완료.');
@@ -971,13 +1005,16 @@ function openAddSession(){
   document.getElementById('ms-label').value=(S.sess.length+1)+'회차';
   openModal('modal-session');
 }
+function relabelSessions(){
+  // 날짜순 정렬 후 1회차, 2회차... 자동 부여
+  S.sess.sort(function(a,b){return a.date.localeCompare(b.date);});
+  S.sess.forEach(function(s,i){s.label=(i+1)+'회차';});
+}
 function confirmAddSession(){
   var d=document.getElementById('ms-date').value;
-  var lbl=document.getElementById('ms-label').value.trim();
   if(!d){toast('날짜를 입력해주세요.');return;}
-  if(!lbl)lbl=(S.sess.length+1)+'회차';
-  S.sess.push({id:Date.now(),date:d,label:lbl});
-  S.sess.sort(function(a,b){return a.date.localeCompare(b.date);});
+  S.sess.push({id:Date.now(),date:d,label:''});
+  relabelSessions();
   saveS();closeModal('modal-session');
   renderAllAtt();renderMonthAtt();buildMonthSel();
   toast('활동 날짜가 추가되었습니다.');
@@ -1097,16 +1134,39 @@ function advanceProj(id){
 function renderSchedule(){
   var ct=document.getElementById('sch-list');
   if(!S.sch.length){ct.innerHTML='<div class="empty">일정이 없습니다.</div>';return;}
-  ct.innerHTML=S.sch.map(function(s){
+  var sorted=S.sch.slice().sort(function(a,b){return (a.date||'').localeCompare(b.date||'');});
+  ct.innerHTML=sorted.map(function(s){
     var dc=s.done==='완료'?'b-green':s.done==='취소'?'b-red':s.done==='연기'?'b-gold':'b-teal';
     var typeBadge=s.type==='activity'?'<span class="badge b-blue" style="font-size:10px;margin-left:6px">활동</span>':'<span class="badge b-purple" style="font-size:10px;margin-left:6px">메모</span>';
     return'<div class="sch-item">'
       +'<div class="sch-mo"><span>'+s.month+'</span>월</div>'
       +'<div class="sch-info"><div class="sch-ttl">'+s.title+typeBadge+'</div><div class="sch-dtl">'+s.date+' · '+s.detail+'</div></div>'
       +'<span class="badge '+dc+'" style="cursor:pointer;flex-shrink:0" data-action="cycle-sch" data-id="'+s.id+'">'+s.done+'</span>'
+      +'<button class="act-btn" data-action="edit-sch" data-id="'+s.id+'" style="flex-shrink:0;margin-right:2px">수정</button>'
       +'<button data-action="delete-sch" data-id="'+s.id+'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:17px;padding:0 4px;flex-shrink:0">×</button>'
       +'</div>';
   }).join('');
+}
+function openEditSchedule(id){
+  var s=S.sch.find(function(x){return x.id===id;});if(!s)return;
+  document.getElementById('mse-id').value=id;
+  document.getElementById('mse-title').value=s.title||'';
+  document.getElementById('mse-date').value=s.date||'';
+  document.getElementById('mse-detail').value=s.detail||'';
+  document.getElementById('mse-type').value=s.type||'activity';
+  openModal('modal-schedule-edit');
+}
+function confirmEditSchedule(){
+  var id=parseInt(document.getElementById('mse-id').value);
+  var s=S.sch.find(function(x){return x.id===id;});if(!s)return;
+  var title=document.getElementById('mse-title').value.trim();
+  if(!title){toast('제목을 입력해주세요.');return;}
+  var date=document.getElementById('mse-date').value;
+  s.title=title;s.date=date;
+  s.detail=document.getElementById('mse-detail').value.trim();
+  s.type=document.getElementById('mse-type').value;
+  s.month=date?date.split('-')[1].replace(/^0/,''):s.month;
+  saveS();closeModal('modal-schedule-edit');renderSchedule();toast('일정이 수정되었습니다.');
 }
 function openAddSchedule(){
   document.getElementById('msc-title').value='';document.getElementById('msc-date').value=new Date().toISOString().split('T')[0];
@@ -1272,6 +1332,7 @@ document.addEventListener('DOMContentLoaded',function(){
     else if(action==='delete-proj'){deleteProj(numId);}
     // 일정
     else if(action==='cycle-sch'){cycleSchDone(numId);}
+    else if(action==='edit-sch'){openEditSchedule(numId);}
     else if(action==='delete-sch'){deleteSch(numId);}
     // 확인 모달 OK
     else if(action==='confirm-ok'){doConfirmOk();}
