@@ -217,7 +217,13 @@ tr:hover td{background:#F9FBFF}
 .mini-label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:500}
 /* EMPTY / TOAST */
 .empty{padding:40px 20px;text-align:center;color:var(--muted);font-size:13px}
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--navy);color:#fff;padding:11px 22px;border-radius:50px;font-size:13px;transition:transform .3s;z-index:9999;box-shadow:0 6px 20px rgba(0,0,0,.2);white-space:nowrap}
+.mini-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px}
+.mini-bar-bg{flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden}
+.mini-bar-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--teal),var(--teal-light));transition:width .4s}
+.ext-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:16px 18px}
+.ext-card h4{font-size:12px;font-weight:700;color:var(--navy);margin-bottom:12px;letter-spacing:.5px}
+.dday-num{font-size:32px;font-weight:700;color:var(--teal);font-family:'Space Grotesk',sans-serif;line-height:1}
+.dday-lbl{font-size:12px;color:var(--muted);margin-top:4px}bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--navy);color:#fff;padding:11px 22px;border-radius:50px;font-size:13px;transition:transform .3s;z-index:9999;box-shadow:0 6px 20px rgba(0,0,0,.2);white-space:nowrap}
 .toast.show{transform:translateX(-50%) translateY(0)}
 @media(max-width:500px){
   .field-row{grid-template-columns:1fr}
@@ -234,7 +240,7 @@ tr:hover td{background:#F9FBFF}
   <div class="home-wrap">
     <div class="logo-badge" id="logo-badge" onclick="secretClick()">🎬 뉴미디어콘텐츠기획단</div>
     <h1 class="home-title">유니콘 log</h1>
-    <p class="home-sub">활동일지를 기록하고 한 해의 성장을<br>함께 만들어가요</p>
+    <p class="home-sub">차곡차곡 우리의 활동기록을 쌓아보아요</p>
     <button class="btn-main btn-white" onclick="goTo('member')">📝 활동일지 작성하기</button>
   </div>
 </div>
@@ -385,6 +391,8 @@ tr:hover td{background:#F9FBFF}
     <!-- 활동일지 탭 -->
     <div id="tab-logs" class="tab-pane on">
       <div class="stats-row" id="stats-row"></div>
+      <!-- 확장 통계 -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:16px" id="stats-ext"></div>
       <div class="filter-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <h4 style="font-size:12px;font-weight:600;color:var(--navy);margin:0">필터</h4>
@@ -841,7 +849,7 @@ function submitForm(){
   document.querySelectorAll('.tag-opt.on').forEach(function(el){el.classList.remove('on');});
   document.querySelectorAll('.stage-item.on').forEach(function(el){el.classList.remove('on');});
   pLinks=[];renderLinkList();
-  document.getElementById('suc-msg').textContent=name+'님, 수고했어요! 오늘도 멋진 활동이었어요 🎉';
+  document.getElementById('suc-msg').textContent='완료! '+name+'님의 활동이 기록됐어요 🦄';
   goTo('success');
 }
 
@@ -863,9 +871,126 @@ function renderDashboard(){
 // ══ STATS ══
 function renderStats(){
   var today=new Date().toISOString().split('T')[0];
+  var thisMonth=today.slice(0,7);
+  var lastMonth=new Date(new Date().getFullYear(),new Date().getMonth()-1,1).toISOString().slice(0,7);
+
+  // 기본 카드
+  var thisMonthCnt=S.logs.filter(function(l){return l.date&&l.date.startsWith(thisMonth);}).length;
+  var lastMonthCnt=S.logs.filter(function(l){return l.date&&l.date.startsWith(lastMonth);}).length;
+  var diff=thisMonthCnt-lastMonthCnt;
+  var diffStr=diff>0?'▲+'+diff:diff<0?'▼'+diff:'→ 동일';
+  var diffClr=diff>0?'color:var(--success)':diff<0?'color:var(--danger)':'color:var(--muted)';
   document.getElementById('stats-row').innerHTML=
-    mkStat('전체 제출',S.logs.length,'')+mkStat('오늘 제출',S.logs.filter(function(l){return l.date===today;}).length,'teal')+
-    mkStat('참여 멤버',new Set(S.logs.map(function(l){return l.name;})).size,'')+mkStat('진행 프로젝트',S.proj.filter(function(p){return p.done==='진행중';}).length,'gold');
+    mkStat('전체 제출',S.logs.length,'')+
+    mkStat('이번 달 제출',thisMonthCnt,'teal')+
+    mkStat('참여 멤버',new Set(S.logs.map(function(l){return l.name;})).size,'')+
+    mkStat('진행 프로젝트',S.proj.filter(function(p){return p.done==='진행중';}).length,'gold')+
+    '<div class="stat-card"><div class="stat-lbl">지난달 대비</div><div class="stat-num" style="font-size:20px;'+diffClr+'">'+diffStr+'</div></div>';
+
+  // 확장 통계
+  var ext='';
+
+  // 1. 멤버별 제출 랭킹
+  var memberCnt={};
+  S.logs.forEach(function(l){memberCnt[l.name]=(memberCnt[l.name]||0)+1;});
+  var memberRank=Object.entries(memberCnt).sort(function(a,b){return b[1]-a[1];}).slice(0,5);
+  var maxCnt=memberRank.length?memberRank[0][1]:1;
+  var rankRows=memberRank.length?memberRank.map(function(r,i){
+    var pct=Math.round(r[1]/maxCnt*100);
+    var medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+    return'<div class="mini-bar-row"><span style="min-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+medal+' '+r[0]+'</span>'
+      +'<div class="mini-bar-bg"><div class="mini-bar-fill" style="width:'+pct+'%"></div></div>'
+      +'<span style="min-width:24px;text-align:right;color:var(--muted)">'+r[1]+'</span></div>';
+  }).join(''):'<div style="color:var(--muted);font-size:12px">아직 데이터가 없어요</div>';
+  ext+='<div class="ext-card"><h4>📋 멤버별 제출 횟수</h4>'+rankRows+'</div>';
+
+  // 2. 활동 주제 분포
+  var topicCnt={};
+  S.logs.forEach(function(l){(l.roles||'').split(',').forEach(function(r){var t=r.trim();if(t)topicCnt[t]=(topicCnt[t]||0)+1;});});
+  var topicTotal=Object.values(topicCnt).reduce(function(a,b){return a+b;},0)||1;
+  var topicRows=Object.entries(topicCnt).sort(function(a,b){return b[1]-a[1];}).map(function(r){
+    var pct=Math.round(r[1]/topicTotal*100);
+    return'<div class="mini-bar-row"><span style="min-width:60px">'+r[0]+'</span>'
+      +'<div class="mini-bar-bg"><div class="mini-bar-fill" style="width:'+pct+'%;background:linear-gradient(90deg,var(--gold),#f7c948)"></div></div>'
+      +'<span style="min-width:32px;text-align:right;color:var(--muted)">'+pct+'%</span></div>';
+  }).join('');
+  ext+='<div class="ext-card"><h4>🗂️ 활동 주제 분포</h4>'+(topicRows||'<div style="color:var(--muted);font-size:12px">아직 데이터가 없어요</div>')+'</div>';
+
+  // 3. 출석률 & 다음 일정 D-day
+  var members=getAllMembers();
+  var avgRate=0;
+  if(members.length&&S.sess.length){
+    var total=members.reduce(function(sum,m){return sum+attRate(m,S.sess);},0);
+    avgRate=Math.round(total/members.length);
+  }
+  var futureSchs=S.sch.filter(function(s){return s.date>=today&&s.done!=='완료'&&s.done!=='취소';}).sort(function(a,b){return a.date.localeCompare(b.date);});
+  var nextSch=futureSchs[0];
+  var ddayHtml='<div style="color:var(--muted);font-size:12px">예정된 일정이 없어요</div>';
+  if(nextSch){
+    var dd=Math.ceil((new Date(nextSch.date)-new Date(today))/(1000*60*60*24));
+    var ddStr=dd===0?'오늘!':'D-'+dd;
+    ddayHtml='<div class="dday-num">'+ddStr+'</div><div class="dday-lbl">'+nextSch.date+' · '+nextSch.title+'</div>';
+  }
+  ext+='<div class="ext-card"><h4>✅ 전체 평균 출석률</h4>'
+    +'<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:10px">'
+    +'<span style="font-size:32px;font-weight:700;color:var(--teal);font-family:\'Space Grotesk\',sans-serif">'+avgRate+'%</span>'
+    +'<span style="font-size:12px;color:var(--muted)">'+members.length+'명 기준</span></div>'
+    +'<div class="mini-bar-bg" style="height:10px;margin-bottom:16px"><div class="mini-bar-fill" style="width:'+avgRate+'%"></div></div>'
+    +'<h4 style="margin-top:4px">📅 다음 일정</h4>'+ddayHtml+'</div>';
+
+  // 4. 프로젝트 단계별 현황 (완료 포함)
+  var stageMap={};
+  S.proj.forEach(function(p){
+    var s=p.done==='완료'?'완료':STAGES[p.stage||0];
+    stageMap[s]=(stageMap[s]||0)+1;
+  });
+  var stageKeys=STAGES.concat(['완료']);
+  var projRows=stageKeys.map(function(s){
+    var n=stageMap[s]||0;
+    if(!n)return'';
+    var barColor=s==='완료'?'linear-gradient(90deg,var(--success),#52D68A)':'linear-gradient(90deg,#8E44AD,#BB8FCE)';
+    var maxN=Math.max.apply(null,stageKeys.map(function(k){return stageMap[k]||0;}));
+    return'<div class="mini-bar-row"><span style="min-width:72px">'+s+'</span>'
+      +'<div class="mini-bar-bg"><div class="mini-bar-fill" style="width:'+Math.round(n/maxN*100)+'%;'+('background:'+barColor)+'"></div></div>'
+      +'<span style="min-width:20px;text-align:right;color:var(--muted)">'+n+'개</span></div>';
+  }).filter(Boolean).join('');
+  var totalProj=S.proj.length;
+  var doneProj=S.proj.filter(function(p){return p.done==='완료';}).length;
+  ext+='<div class="ext-card"><h4>🎬 프로젝트 단계별 현황</h4>'
+    +(projRows||'<div style="color:var(--muted);font-size:12px">프로젝트가 없어요</div>')
+    +(totalProj?'<div style="font-size:11px;color:var(--muted);margin-top:8px">전체 '+totalProj+'개 · 완료 '+doneProj+'개 · 진행중 '+(totalProj-doneProj)+'개</div>':'')
+    +'</div>';
+
+  // 5. 가장 가까운 활동일정 제출률
+  var today2=today;
+  var pastActSess=S.sess.filter(function(s){return s.date<=today2;}).sort(function(a,b){return b.date.localeCompare(a.date);});
+  var nearSess=pastActSess[0];
+  var subRateHtml='<div style="color:var(--muted);font-size:12px">아직 진행된 활동이 없어요</div>';
+  if(nearSess){
+    var allM=getAllMembers();
+    var totalM=allM.length;
+    // 출석 O 또는 E인 멤버가 활동일지 제출했는지 확인
+    var presentM=allM.filter(function(m){
+      var att=S.att[m+'_'+nearSess.id];
+      return att==='O'||att==='E';
+    });
+    var presentCnt=presentM.length||totalM; // 출석데이터 없으면 전체 기준
+    var submittedM=presentM.length
+      ? presentM.filter(function(m){return S.logs.some(function(l){return l.name===m&&l.date===nearSess.date;});})
+      : allM.filter(function(m){return S.logs.some(function(l){return l.name===m&&l.date===nearSess.date;});});
+    var subCnt=submittedM.length;
+    var subPct=presentCnt>0?Math.round(subCnt/presentCnt*100):0;
+    var missingM=( presentM.length?presentM:allM ).filter(function(m){return!S.logs.some(function(l){return l.name===m&&l.date===nearSess.date;});});
+    subRateHtml='<div style="margin-bottom:6px"><span style="font-size:11px;color:var(--muted)">'+nearSess.label+' · '+nearSess.date+'</span></div>'
+      +'<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px">'
+      +'<span style="font-size:28px;font-weight:700;color:var(--navy);font-family:\'Space Grotesk\',sans-serif">'+subPct+'%</span>'
+      +'<span style="font-size:12px;color:var(--muted)">'+subCnt+' / '+(presentM.length||totalM)+'명 제출</span></div>'
+      +'<div class="mini-bar-bg" style="height:8px;margin-bottom:8px"><div class="mini-bar-fill" style="width:'+subPct+'%"></div></div>'
+      +(missingM.length?'<div style="font-size:11px;color:var(--danger)">미제출: '+missingM.join(', ')+'</div>':'<div style="font-size:11px;color:var(--success)">✓ 모두 제출 완료!</div>');
+  }
+  ext+='<div class="ext-card"><h4>📝 최근 활동 제출률</h4>'+subRateHtml+'</div>';
+
+  document.getElementById('stats-ext').innerHTML=ext;
 }
 function mkStat(lbl,val,cls){return'<div class="stat-card"><div class="stat-lbl">'+lbl+'</div><div class="stat-num '+cls+'">'+val+'</div></div>';}
 
@@ -1052,11 +1177,14 @@ function confirmAddSession(){
 }
 function deleteSession(id){
   showConfirm('활동 날짜 삭제','이 회차를 삭제할까요? 해당 회차의 출석 기록도 함께 삭제됩니다.',function(){
-    // 해당 세션의 출석 데이터 삭제
+    var sid=String(id);
+    // id가 정수든 소수든 _id 끝나는 키 모두 삭제
     Object.keys(S.att).forEach(function(k){
-      if(k.endsWith('_'+id))delete S.att[k];
+      var parts=k.split('_');
+      var kId=parts[parts.length-1];
+      if(kId===sid||kId===String(parseInt(id)))delete S.att[k];
     });
-    S.sess=S.sess.filter(function(s){return s.id!==id;});
+    S.sess=S.sess.filter(function(s){return String(s.id)!==sid;});
     relabelSessions();
     saveS();renderAllAtt();renderMonthAtt();buildMonthSel();
     toast('활동 날짜가 삭제되었습니다.');
@@ -1241,7 +1369,7 @@ function syncSchToSess(){
   var activitySchs=S.sch.filter(function(s){return s.type==='activity'&&s.date;});
   activitySchs.forEach(function(s){
     var exists=S.sess.some(function(ss){return ss.date===s.date;});
-    if(!exists){S.sess.push({id:Date.now()+Math.random(),date:s.date,label:''});}
+    if(!exists){S.sess.push({id:Date.now()+Math.floor(Math.random()*1000),date:s.date,label:''});}
   });
   relabelSessions();
   saveS();
@@ -1433,7 +1561,7 @@ document.addEventListener('DOMContentLoaded',function(){
       var sid=parseInt(el.getAttribute('data-sid'));
       cycleAtt(m,sid,el);
     }
-    else if(action==='delete-session'){deleteSession(parseInt(el.getAttribute('data-id')));}
+    else if(action==='delete-session'){deleteSession(el.getAttribute('data-id'));}
     // 확인 모달 OK
     else if(action==='confirm-ok'){doConfirmOk();}
     // 멤버
