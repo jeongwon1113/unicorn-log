@@ -852,6 +852,7 @@ function doLogout(){goTo('home');}
 
 // ══ DASHBOARD ══
 function renderDashboard(){
+  syncSchToSess();
   renderStats();buildFilterChips();applyFilter();
   renderAllAtt();buildMonthSel();renderMonthAtt();
   renderProjects();renderSchedule();renderMembers();
@@ -969,8 +970,7 @@ function deleteSch(id){
     S.sch=S.sch.filter(function(x){return x.id!==id;});
     saveS();renderSchedule();toast('삭제되었습니다.');
   });
-}
-function deleteMember(id){
+}function deleteMember(id){
   showConfirm('멤버 삭제','이 멤버를 삭제할까요?',function(){
     S.members=S.members.filter(function(x){return x.id!==id;});
     saveS();renderMembers();toast('삭제되었습니다.');
@@ -1036,11 +1036,31 @@ function relabelSessions(){
 function confirmAddSession(){
   var d=document.getElementById('ms-date').value;
   if(!d){toast('날짜를 입력해주세요.');return;}
+  // 중복 날짜 체크
+  if(S.sess.some(function(s){return s.date===d;})){toast('이미 등록된 날짜입니다.');return;}
   S.sess.push({id:Date.now(),date:d,label:''});
   relabelSessions();
+  // 일정 탭에 해당 날짜가 없으면 이름 없는 활동 일정으로 추가
+  var alreadyInSch=S.sch.some(function(s){return s.date===d&&s.type==='activity';});
+  if(!alreadyInSch){
+    var month=d.split('-')[1].replace(/^0/,'');
+    S.sch.push({id:Date.now()+1,month:month,title:'(이름 없는 활동)',date:d,detail:'출석 탭에서 추가된 일정',done:'예정',type:'activity'});
+  }
   saveS();closeModal('modal-session');
   renderAllAtt();renderMonthAtt();buildMonthSel();
   toast('활동 날짜가 추가되었습니다.');
+}
+function deleteSession(id){
+  showConfirm('활동 날짜 삭제','이 회차를 삭제할까요? 해당 회차의 출석 기록도 함께 삭제됩니다.',function(){
+    // 해당 세션의 출석 데이터 삭제
+    Object.keys(S.att).forEach(function(k){
+      if(k.endsWith('_'+id))delete S.att[k];
+    });
+    S.sess=S.sess.filter(function(s){return s.id!==id;});
+    relabelSessions();
+    saveS();renderAllAtt();renderMonthAtt();buildMonthSel();
+    toast('활동 날짜가 삭제되었습니다.');
+  });
 }
 function attRate(m,sessions){
   if(!sessions.length)return 0;
@@ -1052,7 +1072,12 @@ function renderAttTable(ctId,sessions){
   var ct=document.getElementById(ctId);
   var members=getAllMembers();
   if(!sessions.length){ct.innerHTML='<div class="empty">활동 날짜를 먼저 추가해주세요.</div>';return;}
-  var hdCols=sessions.map(function(s){return'<th style="min-width:72px">'+s.label+'<br><input class="date-inp" value="'+s.date+'" data-sess-id="'+s.id+'" onchange="updSessDate('+s.id+',this.value)"></th>';}).join('')+'<th>출석</th><th>지각</th><th>결석</th><th>출석률</th>';
+  var hdCols=sessions.map(function(s){
+    return'<th style="min-width:80px">'+s.label
+      +'<br><input class="date-inp" value="'+s.date+'" data-sess-id="'+s.id+'" onchange="updSessDate('+s.id+',this.value)">'
+      +'<br><button data-action="delete-session" data-id="'+s.id+'" style="background:none;border:none;color:#E74C3C;cursor:pointer;font-size:10px;padding:1px 0;font-family:\'Noto Sans KR\',sans-serif">× 삭제</button>'
+      +'</th>';
+  }).join('')+'<th>출석</th><th>지각</th><th>결석</th><th>출석률</th>';
   var rows=members.map(function(m){
     var cells=sessions.map(function(s){var k=m+'_'+s.id;var v=S.att[k]||'';var cl=v==='O'?'ao':v==='△'?'al':v==='X'?'ax':v==='E'?'ae':'an';return'<td><button class="att-cell '+cl+'" data-action="cycle-att" data-member="'+encodeURIComponent(m)+'" data-sid="'+s.id+'">'+(v||'·')+'</button></td>';}).join('');
     var o=sessions.filter(function(s){return S.att[m+'_'+s.id]==='O';}).length;
@@ -1195,7 +1220,6 @@ function renderSchedule(){
 }
 function cycleSchDone(id){
   var s=S.sch.find(function(x){return x.id===id;});if(!s)return;
-  // 완료로 넘어갈 때만 확인 모달
   var c=['예정','완료','연기','취소'];
   var next=c[(c.indexOf(s.done)+1)%c.length];
   if(next==='완료'){
@@ -1211,6 +1235,16 @@ function confirmSchDone(){
   var s=S.sch.find(function(x){return x.id===id;});
   if(s){s.done='완료';saveS();}
   closeModal('modal-sch-done');renderSchedule();toast('일정이 완료 처리되었습니다.');
+}
+// 활동 일정 → 출석 날짜 동기화
+function syncSchToSess(){
+  var activitySchs=S.sch.filter(function(s){return s.type==='activity'&&s.date;});
+  activitySchs.forEach(function(s){
+    var exists=S.sess.some(function(ss){return ss.date===s.date;});
+    if(!exists){S.sess.push({id:Date.now()+Math.random(),date:s.date,label:''});}
+  });
+  relabelSessions();
+  saveS();
 }
 function openEditSchedule(id){
   var s=S.sch.find(function(x){return x.id===id;});if(!s)return;
@@ -1257,11 +1291,6 @@ function confirmAddSchedule(){
     renderAllAtt();renderMonthAtt();buildMonthSel();
   }
   saveS();closeModal('modal-schedule');renderSchedule();toast('일정이 추가되었습니다.');
-}
-function cycleSchDone(id){
-  var s=S.sch.find(function(x){return x.id===id;});if(!s)return;
-  var c=['예정','완료','연기','취소'];s.done=c[(c.indexOf(s.done)+1)%c.length];
-  saveS();renderSchedule();
 }
 // ══ MEMBERS ══
 function renderMembers(){
@@ -1404,6 +1433,7 @@ document.addEventListener('DOMContentLoaded',function(){
       var sid=parseInt(el.getAttribute('data-sid'));
       cycleAtt(m,sid,el);
     }
+    else if(action==='delete-session'){deleteSession(parseInt(el.getAttribute('data-id')));}
     // 확인 모달 OK
     else if(action==='confirm-ok'){doConfirmOk();}
     // 멤버
