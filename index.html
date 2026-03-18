@@ -537,6 +537,15 @@ tr:hover td{background:#F9FBFF}
     <!-- 설정 탭 -->
     <div id="tab-set" class="tab-pane">
       <div class="set-card">
+        <h3>📊 구글 시트 자동 연동</h3>
+        <p>활동일지 제출 시 구글 시트에 자동으로 기록됩니다. Apps Script 웹앱 URL을 입력하세요.</p>
+        <div class="mf">
+          <label>Apps Script 웹앱 URL</label>
+          <input type="text" id="s-gas-url" placeholder="https://script.google.com/macros/s/.../exec">
+        </div>
+        <button class="save-btn" onclick="saveGasUrl()">저장</button>
+      </div>
+      <div class="set-card">
         <h3>🔑 비밀번호 변경</h3>
         <p>지도자 대시보드 접근 비밀번호를 변경합니다.</p>
         <div class="mf"><label>현재 비밀번호</label><input type="password" id="s-cur"></div>
@@ -861,6 +870,8 @@ function submitForm(){
   var project=(selV==='__direct__'||selV==='')?document.getElementById('f-proj').value.trim():selV;
   S.logs.unshift({id:Date.now(),name:name,date:date,start:document.getElementById('f-start').value,end:document.getElementById('f-end').value,roles:roles.join(', ')||'미선택',project:project,stage:stEl?stEl.dataset.v:'',review:review,good:document.getElementById('f-good').value.trim(),bad:document.getElementById('f-bad').value.trim(),next:document.getElementById('f-next').value.trim(),note:document.getElementById('f-note').value.trim(),links:pLinks.slice(),submitted:new Date().toLocaleString('ko-KR')});
   saveS();
+  // 구글 시트 자동 전송
+  sendToSheet(S.logs[0]);
   ['f-name','f-proj','f-review','f-good','f-bad','f-next','f-note'].forEach(function(id){document.getElementById(id).value='';});
   ['rc','gc','bc','xc','nc'].forEach(function(id){document.getElementById(id).textContent='0';});
   document.getElementById('f-start').value='';document.getElementById('f-end').value='';
@@ -870,6 +881,25 @@ function submitForm(){
   pLinks=[];renderLinkList();
   document.getElementById('suc-msg').textContent='완료! '+name+'님의 활동이 기록됐어요 🦄';
   goTo('success');
+}
+
+// ══ GOOGLE SHEETS 연동 ══
+var GAS_URL = localStorage.getItem('uc_gas_url') || '';
+function sendToSheet(entry){
+  if(!GAS_URL)return;
+  var payload=Object.assign({},entry,{cmt:S.cmt[entry.id]||''});
+  fetch(GAS_URL,{
+    method:'POST',
+    mode:'no-cors',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload)
+  }).catch(function(){});
+}
+function saveGasUrl(){
+  var v=document.getElementById('s-gas-url').value.trim();
+  GAS_URL=v;
+  localStorage.setItem('uc_gas_url',v);
+  toast(v?'구글 시트 연동 URL이 저장되었습니다. ✅':'URL이 삭제되었습니다.');
 }
 
 // ══ LOGIN ══
@@ -885,6 +915,8 @@ function renderDashboard(){
   renderProjects();renderSchedule();renderMembers();
   renderCommentTable();buildAiTarget();
   if(S.apiKey)document.getElementById('ai-key').value=S.apiKey;
+  var gasInp=document.getElementById('s-gas-url');
+  if(gasInp)gasInp.value=GAS_URL;
 }
 
 // ══ STATS ══
