@@ -232,9 +232,6 @@ tr:hover td{background:#F9FBFF}
   .filter-row{flex-wrap:wrap}
 }
 </style>
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -776,6 +773,10 @@ tr:hover td{background:#F9FBFF}
 
 <div class="toast" id="toast"></div>
 
+<!-- Firebase SDK - 반드시 메인 스크립트보다 먼저 로드 -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
 <script>
 // ══ DEFAULTS ══
 function defProj(){return[{id:1,name:'단 소개 영상',members:['김민준','이서연'],start:'2026-03-01',due:'2026-04-15',stage:2,platform:'YouTube',done:'진행중'},{id:2,name:'봄 캠페인 릴스',members:['박지호','최수아'],start:'2026-04-01',due:'2026-05-10',stage:0,platform:'Instagram',done:'예정'}];}
@@ -798,6 +799,7 @@ var S={
   apiKey: ls('uc_api')||''
 };
 function saveS(){
+  // 로컬에만 백업 (청소년용 - 로그 제외)
   lss('uc_pw',S.pw);lss('uc_logs',JSON.stringify(S.logs));
   lss('uc_att',JSON.stringify(S.att));lss('uc_proj',JSON.stringify(S.proj));
   lss('uc_sch',JSON.stringify(S.sch));lss('uc_sess',JSON.stringify(S.sess));
@@ -815,35 +817,34 @@ var firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 var db = firebase.firestore();
-var DB_DOC = db.collection('unicornlog').doc('data');
 
-// 클라우드에 저장
-function saveS(){
-  // 로컬에도 백업
-  lss('uc_pw',S.pw);lss('uc_logs',JSON.stringify(S.logs));
-  lss('uc_att',JSON.stringify(S.att));lss('uc_proj',JSON.stringify(S.proj));
-  lss('uc_sch',JSON.stringify(S.sch));lss('uc_sess',JSON.stringify(S.sess));
-  lss('uc_cmt',JSON.stringify(S.cmt));lss('uc_members',JSON.stringify(S.members));
-  // Firestore에 저장
-  DB_DOC.set({
+// 활동일지: logs 컬렉션에 개별 문서로 저장 (청소년 제출)
+function saveLogToCloud(entry){
+  db.collection('logs').doc(String(entry.id)).set(entry)
+    .catch(function(e){ console.warn('활동일지 저장 실패:', e); });
+}
+
+// 지도자 데이터: leaderdata 문서에 저장 (지도자만 호출)
+function saveLeaderData(){
+  saveS(); // 로컬 백업
+  db.collection('unicornlog').doc('leaderdata').set({
     pw: S.pw,
-    logs: JSON.stringify(S.logs),
     att: JSON.stringify(S.att),
     proj: JSON.stringify(S.proj),
     sch: JSON.stringify(S.sch),
     sess: JSON.stringify(S.sess),
     cmt: JSON.stringify(S.cmt),
     members: JSON.stringify(S.members)
-  }).catch(function(e){ console.warn('Firestore 저장 실패:', e); });
+  }).catch(function(e){ console.warn('지도자 데이터 저장 실패:', e); });
 }
 
-// 클라우드에서 불러오기
+// 클라우드에서 전체 불러오기 (로그인 시)
 function loadFromCloud(callback){
-  DB_DOC.get().then(function(doc){
+  // 지도자 설정 불러오기
+  db.collection('unicornlog').doc('leaderdata').get().then(function(doc){
     if(doc.exists){
       var d=doc.data();
       S.pw      = d.pw      || S.pw;
-      S.logs    = JSON.parse(d.logs    || '[]');
       S.att     = JSON.parse(d.att     || '{}');
       S.proj    = JSON.parse(d.proj    || JSON.stringify(defProj()));
       S.sch     = JSON.parse(d.sch     || JSON.stringify(defSch()));
@@ -851,6 +852,14 @@ function loadFromCloud(callback){
       S.cmt     = JSON.parse(d.cmt     || '{}');
       S.members = JSON.parse(d.members || '[]');
     }
+    // 활동일지 불러오기
+    return db.collection('logs').orderBy('id','desc').get();
+  }).then(function(snap){
+    if(!snap.empty){
+      S.logs = snap.docs.map(function(d){ return d.data(); });
+      S.logs.sort(function(a,b){ return b.id - a.id; });
+    }
+    saveLeaderData(); // 로컬 동기화
     if(callback) callback();
   }).catch(function(e){
     console.warn('Firestore 불러오기 실패, 로컬 데이터 사용:', e);
@@ -926,9 +935,9 @@ function submitForm(){
   var selV=document.getElementById('f-proj-sel').value;
   var project=(selV==='__direct__'||selV==='')?document.getElementById('f-proj').value.trim():selV;
   S.logs.unshift({id:Date.now(),name:name,date:date,start:document.getElementById('f-start').value,end:document.getElementById('f-end').value,roles:roles.join(', ')||'미선택',project:project,stage:stEl?stEl.dataset.v:'',review:review,good:document.getElementById('f-good').value.trim(),bad:document.getElementById('f-bad').value.trim(),next:document.getElementById('f-next').value.trim(),note:document.getElementById('f-note').value.trim(),links:pLinks.slice(),submitted:new Date().toLocaleString('ko-KR')});
-  saveS();
-  // 구글 시트 자동 전송
-  sendToSheet(S.logs[0]);
+  saveS();             // 로컬 저장
+  saveLogToCloud(S.logs[0]); // Firestore에 개별 저장
+  sendToSheet(S.logs[0]);    // 구글 시트 전송
   ['f-name','f-proj','f-review','f-good','f-bad','f-next','f-note'].forEach(function(id){document.getElementById(id).value='';});
   ['rc','gc','bc','xc','nc'].forEach(function(id){document.getElementById(id).textContent='0';});
   document.getElementById('f-start').value='';document.getElementById('f-end').value='';
@@ -1197,7 +1206,7 @@ function saveLogEdit(){
   l.note=document.getElementById('vl-note').value.trim();
   var cmt=document.getElementById('vl-cmt').value.trim();
   if(cmt)S.cmt[id]=cmt;else delete S.cmt[id];
-  saveS();closeModal('modal-view-log');
+  saveLeaderData();closeModal('modal-view-log');
   applyFilter();renderCommentTable();renderStats();
   renderAllAtt();renderMonthAtt();
   toast('활동일지가 수정되었습니다.');
@@ -1219,36 +1228,36 @@ function doConfirmOk(){
 function deleteLog(id){
   showConfirm('활동일지 삭제','이 활동일지를 삭제할까요?',function(){
     S.logs=S.logs.filter(function(l){return l.id!==id;});delete S.cmt[id];
-    saveS();renderStats();buildFilterChips();applyFilter();renderCommentTable();toast('삭제되었습니다.');
+    saveLeaderData();renderStats();buildFilterChips();applyFilter();renderCommentTable();toast('삭제되었습니다.');
   });
 }
 function deleteProj(id){
   showConfirm('프로젝트 삭제','이 프로젝트를 삭제할까요?',function(){
     S.proj=S.proj.filter(function(x){return x.id!==id;});
-    saveS();renderProjects();populateProjSel();toast('삭제되었습니다.');
+    saveLeaderData();renderProjects();populateProjSel();toast('삭제되었습니다.');
   });
 }
 function deleteSch(id){
   showConfirm('일정 삭제','이 일정을 삭제할까요?',function(){
     S.sch=S.sch.filter(function(x){return x.id!==id;});
-    saveS();renderSchedule();toast('삭제되었습니다.');
+    saveLeaderData();renderSchedule();toast('삭제되었습니다.');
   });
 }function deleteMember(id){
   showConfirm('멤버 삭제','이 멤버를 삭제할까요?',function(){
     S.members=S.members.filter(function(x){return x.id!==id;});
-    saveS();renderMembers();toast('삭제되었습니다.');
+    saveLeaderData();renderMembers();toast('삭제되었습니다.');
   });
 }
 function clearSessions(){
   showConfirm('출석 날짜 초기화','모든 활동 날짜와 출석 데이터를 삭제합니다. 복구되지 않습니다.',function(){
-    S.sess=[];S.att={};saveS();
+    S.sess=[];S.att={};saveLeaderData();
     renderAllAtt();renderMonthAtt();buildMonthSel();
     toast('출석 날짜가 초기화되었습니다.');
   });
 }
 function clearAll(){
   showConfirm('전체 삭제','모든 활동일지를 삭제합니다. 복구되지 않습니다.',function(){
-    S.logs=[];S.cmt={};saveS();renderDashboard();toast('전체 삭제 완료.');
+    S.logs=[];S.cmt={};saveLeaderData();renderDashboard();toast('전체 삭제 완료.');
   });
 }
 
@@ -1263,7 +1272,7 @@ function confirmComment(){
   var id=parseInt(document.getElementById('mc-id').value);
   var v=document.getElementById('mc-text').value.trim();
   if(v)S.cmt[id]=v;else delete S.cmt[id];
-  saveS();closeModal('modal-comment');applyFilter();renderCommentTable();toast('코멘트가 저장되었습니다.');
+  saveLeaderData();closeModal('modal-comment');applyFilter();renderCommentTable();toast('코멘트가 저장되었습니다.');
 }
 function renderCommentTable(){
   var tb=document.getElementById('comment-body');
@@ -1309,7 +1318,7 @@ function confirmAddSession(){
     var month=d.split('-')[1].replace(/^0/,'');
     S.sch.push({id:Date.now()+1,month:month,title:'(이름 없는 활동)',date:d,detail:'출석 탭에서 추가된 일정',done:'예정',type:'activity'});
   }
-  saveS();closeModal('modal-session');
+  saveLeaderData();closeModal('modal-session');
   renderAllAtt();renderMonthAtt();buildMonthSel();
   toast('활동 날짜가 추가되었습니다.');
 }
@@ -1330,7 +1339,7 @@ function deleteSession(id){
     });
     S.sess=S.sess.filter(function(s){return String(s.id)!==sid;});
     relabelSessions();
-    saveS();renderAllAtt();renderMonthAtt();buildMonthSel();
+    saveLeaderData();renderAllAtt();renderMonthAtt();buildMonthSel();
     toast('활동 날짜가 삭제되었습니다.');
   });
 }
@@ -1394,14 +1403,14 @@ function renderMonthAtt(){
   var sess=(v==='all')?S.sess:S.sess.filter(function(s){return s.date.startsWith(v);});
   renderAttTable('att-mo-ct',sess);
 }
-function updSessDate(id,nd){var s=S.sess.find(function(x){return x.id===id;});if(s){s.date=nd;saveS();}}
+function updSessDate(id,nd){var s=S.sess.find(function(x){return x.id===id;});if(s){s.date=nd;saveLeaderData();}}
 function cycleAtt(name,sid,btn){
   var k=name+'_'+sid;
   var cycle=['','O','△','X','E'];
   var cur=S.att[k]||'';
   var next=cycle[(cycle.indexOf(cur)+1)%cycle.length];
   if(next)S.att[k]=next;else delete S.att[k];
-  saveS();
+  saveLeaderData();
   var cl=next==='O'?'ao':next==='△'?'al':next==='X'?'ax':next==='E'?'ae':'an';
   btn.className='att-cell '+cl;btn.textContent=next||'·';
   renderAllAtt();renderMonthAtt();
@@ -1442,7 +1451,7 @@ function confirmAddProject(){
   var mStr=document.getElementById('mp-members').value;
   var members=mStr.split(',').map(function(m){return m.trim();}).filter(Boolean);
   S.proj.push({id:Date.now(),name:name,members:members,start:new Date().toISOString().split('T')[0],due:document.getElementById('mp-due').value,stage:0,platform:document.getElementById('mp-platform').value.trim(),done:'진행중'});
-  saveS();closeModal('modal-project');renderProjects();populateProjSel();renderStats();toast('프로젝트가 추가되었습니다.');
+  saveLeaderData();closeModal('modal-project');renderProjects();populateProjSel();renderStats();toast('프로젝트가 추가되었습니다.');
 }
 function openEditMembers(id){
   var p=S.proj.find(function(x){return x.id===id;});if(!p)return;
@@ -1455,12 +1464,12 @@ function confirmEditMembers(){
   var p=S.proj.find(function(x){return x.id===id;});if(!p)return;
   var v=document.getElementById('mme-val').value;
   p.members=v.split(',').map(function(m){return m.trim();}).filter(Boolean);
-  saveS();closeModal('modal-members-edit');renderProjects();toast('멤버가 수정되었습니다.');
+  saveLeaderData();closeModal('modal-members-edit');renderProjects();toast('멤버가 수정되었습니다.');
 }
 function advanceProj(id){
   var p=S.proj.find(function(x){return x.id===id;});if(!p)return;
   if((p.stage||0)<STAGES.length-1)p.stage=(p.stage||0)+1;else p.done='완료';
-  saveS();renderProjects();renderStats();toast('단계가 업데이트됐습니다.');
+  saveLeaderData();renderProjects();renderStats();toast('단계가 업데이트됐습니다.');
 }
 
 // ══ SCHEDULE ══
@@ -1512,13 +1521,13 @@ function cycleSchDone(id){
     document.getElementById('sch-done-id').value=id;
     openModal('modal-sch-done');
   } else {
-    s.done=next;saveS();renderSchedule();
+    s.done=next;saveLeaderData();renderSchedule();
   }
 }
 function confirmSchDone(){
   var id=parseInt(document.getElementById('sch-done-id').value);
   var s=S.sch.find(function(x){return x.id===id;});
-  if(s){s.done='완료';saveS();}
+  if(s){s.done='완료';saveLeaderData();}
   closeModal('modal-sch-done');renderSchedule();toast('일정이 완료 처리되었습니다.');
 }
 // 활동 일정 → 출석 날짜 동기화
@@ -1529,7 +1538,7 @@ function syncSchToSess(){
     if(!exists){S.sess.push({id:Date.now()+Math.floor(Math.random()*1000),date:s.date,label:''});}
   });
   relabelSessions();
-  saveS();
+  saveLeaderData();
 }
 function openEditSchedule(id){
   var s=S.sch.find(function(x){return x.id===id;});if(!s)return;
@@ -1550,7 +1559,7 @@ function confirmEditSchedule(){
   s.detail=document.getElementById('mse-detail').value.trim();
   s.type=document.getElementById('mse-type').value;
   s.month=date?date.split('-')[1].replace(/^0/,''):s.month;
-  saveS();closeModal('modal-schedule-edit');renderSchedule();toast('일정이 수정되었습니다.');
+  saveLeaderData();closeModal('modal-schedule-edit');renderSchedule();toast('일정이 수정되었습니다.');
 }
 function openAddSchedule(){
   document.getElementById('msc-title').value='';
@@ -1572,7 +1581,7 @@ function confirmAddSchedule(){
     relabelSessions();
     renderAllAtt();renderMonthAtt();buildMonthSel();
   }
-  saveS();closeModal('modal-schedule');renderSchedule();toast('일정이 추가되었습니다.');
+  saveLeaderData();closeModal('modal-schedule');renderSchedule();toast('일정이 추가되었습니다.');
 }
 // ══ MEMBERS ══
 function renderMembers(){
@@ -1630,7 +1639,7 @@ function confirmMember(){
   var obj={name:name,gender:document.getElementById('mm-gender').value,birth:document.getElementById('mm-birth').value,school:document.getElementById('mm-school').value.trim(),grade:document.getElementById('mm-grade').value,tel:document.getElementById('mm-tel').value.trim(),parent:document.getElementById('mm-parent').value.trim(),memo:document.getElementById('mm-memo').value.trim()};
   if(id){var m=S.members.find(function(x){return x.id===parseInt(id);});if(m)Object.assign(m,obj);}
   else{obj.id=Date.now();S.members.push(obj);}
-  saveS();closeModal('modal-member');renderMembers();toast('저장되었습니다.');
+  saveLeaderData();closeModal('modal-member');renderMembers();toast('저장되었습니다.');
 }
 // ══ AI ══
 function buildAiTarget(){
@@ -1664,7 +1673,7 @@ function changePw(){
   if(cur!==S.pw){toast('현재 비밀번호가 틀렸습니다.');return;}
   if(!nw||nw.length<6){toast('새 비밀번호는 6자 이상이어야 합니다.');return;}
   if(nw!==nw2){toast('새 비밀번호가 일치하지 않습니다.');return;}
-  S.pw=nw;saveS();['s-cur','s-new','s-new2'].forEach(function(id){document.getElementById(id).value='';});
+  S.pw=nw;saveLeaderData();['s-cur','s-new','s-new2'].forEach(function(id){document.getElementById(id).value='';});
   var msg=document.getElementById('pw-msg');msg.style.display='block';setTimeout(function(){msg.style.display='none';},3000);
 }
 // ══ TOAST ══
